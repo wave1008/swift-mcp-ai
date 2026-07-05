@@ -163,8 +163,9 @@ enum ToolRegistry {
         ),
         Tool(
             name: "detect_objects",
-            description: "YOLO(Core ML 常駐)で物体検出する。simulator 指定でスクリーンショットを直接解析、"
-                + "image_path 指定で既存画像を解析。bbox はピクセル座標(左上原点)",
+            description: "YOLO(Core ML 常駐)で物体・UI 要素を検出する。既定モデル(OmniParser icon_detect)は"
+                + "ボタンやアイコン等のインタラクティブ UI 要素を 'icon' として検出。simulator 指定で"
+                + "スクリーンショットを直接解析、image_path 指定で既存画像を解析。bbox はピクセル座標(左上原点)",
             inputSchema: [
                 "type": "object",
                 "properties": [

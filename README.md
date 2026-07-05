@@ -4,7 +4,8 @@ iOS Simulator の画面を高速に取得・解析する MCP サーバー(Swift 
 
 - **capture_screenshot** — ScreenCaptureKit によるスクリーンショット。同一 Simulator への連続呼び出しは常駐 `SCStream` の最新フレームを返すため、ほぼゼロレイテンシ
 - **`source` オプション(全キャプチャ系ツール共通)** — `window`(既定): 上記の高速ウィンドウキャプチャ。`framebuffer`: `simctl io screenshot` でデバイス画面バッファを直接取得。ホストアプリの UI やベゼルが写り込まず、ネイティブ解像度(例: 1179×2556)で、ウィンドウの表示状態に依存しない(最小化・ヘッドレスでも可)。ただし毎回 約0.5秒
-- **detect_objects** — Core ML 化した YOLO をプロセス内に常駐させて物体検出(ANE/GPU)
+- **detect_objects** — Core ML 化した YOLO をプロセス内に常駐させて物体・UI 要素検出(ANE/GPU)。
+  既定モデル(OmniParser v2 icon_detect)はボタン・アイコン等のインタラクティブ UI 要素を検出する
 - **extract_text** — Vision OCR でテキストと位置(ピクセル座標・左上原点)を抽出
 - **analyze_screen** — 1回のキャプチャに対して YOLO と OCR を並列実行
 - **list_simulators** — 起動中 Simulator の一覧と権限・ストリーム状態
@@ -49,17 +50,31 @@ claude mcp add simulator-mcp -- /path/to/swift-mcp-ai/.build/release/SimulatorMC
   両方に対応。DeviceHub はウィンドウ全体(サイドバー等を含む)がキャプチャ対象になるため、
   デバイス画面だけが必要な場合は `source: "framebuffer"` を使う(ウィンドウ・画面収録権限とも不要)
 
-## YOLO モデルの用意
+## 検出モデルの用意
 
-モデルは同梱していない。`uv` があれば1コマンドで生成できる:
+モデルは同梱していない。UI 解析には **OmniParser v2 icon_detect**(yolo11m ベース、
+クラス `icon` 1種、imgsz 1280)を推奨:
+
+```sh
+curl -L -o Models/omniparser_icon_detect.pt \
+  https://huggingface.co/microsoft/OmniParser-v2.0/resolve/main/icon_detect/model.pt
+uv run scripts/export_yolo.py Models/omniparser_icon_detect.pt
+# → Models/omniparser_icon_detect.mlpackage(imgsz はモデルのメタデータから自動)
+```
+
+写真・カメラ画面の中身など実世界の物体を検出したい場合は COCO 80 クラスの汎用モデル:
 
 ```sh
 uv run scripts/export_yolo.py yolo11n   # Models/yolo11n.mlpackage を生成
 ```
 
-検索順: `$YOLO_MODEL_PATH` → `./Models/` → 実行ファイル隣の `Models/`。
-`.mlpackage` は初回起動時にコンパイルされ `~/Library/Caches/simulator-mcp/` に
-キャッシュされる。NMS 込み(`nms=True`)でエクスポートすること。
+検索順: `$YOLO_MODEL_PATH` → `./Models/` → 実行ファイル隣の `Models/`
+(ディレクトリ内はファイル名ソートで最初の1つ)。複数モデルを置く場合は
+`YOLO_MODEL_PATH` で明示するのが確実。`.mlpackage` は初回起動時にコンパイルされ
+`~/Library/Caches/simulator-mcp/` にキャッシュされる。NMS 込み(`nms=True`)で
+エクスポートすること。
+
+ライセンス注意: OmniParser の icon_detect 重みは AGPL-3.0。
 
 ## 高速化の仕組み
 

@@ -5,9 +5,11 @@
 """YOLO を Core ML (.mlpackage) に変換して Models/ に配置する。
 
 使い方:
-    uv run scripts/export_yolo.py [モデル名]
+    uv run scripts/export_yolo.py [モデル名または.ptパス] [imgsz]
 
-モデル名の例: yolo11n (既定), yolo11s, yolo11m, yolov8n など。
+モデル名の例: yolo11n (既定), yolo11s, yolov8n など(自動ダウンロード)。
+UI 検出モデル等のローカル重みは .pt のパスをそのまま渡す。
+imgsz 省略時はモデルの学習時解像度(メタデータ)を使う。
 nms=True で NMS を組み込み、Swift 側は VNRecognizedObjectObservation を
 そのまま受け取れる。
 """
@@ -23,11 +25,18 @@ repo_root = Path(__file__).resolve().parent.parent
 models_dir = repo_root / "Models"
 models_dir.mkdir(exist_ok=True)
 
-model = YOLO(f"{model_name}.pt")
-exported = Path(model.export(format="coreml", nms=True, half=True, imgsz=640))
+model = YOLO(model_name if model_name.endswith(".pt") else f"{model_name}.pt")
+if len(sys.argv) > 2:
+    imgsz = int(sys.argv[2])
+else:
+    imgsz = getattr(model.model, "args", {}).get("imgsz") or 640
+print(f"classes: {model.names}, imgsz: {imgsz}")
+
+exported = Path(model.export(format="coreml", nms=True, half=True, imgsz=imgsz))
 
 dest = models_dir / exported.name
-if dest.exists():
-    shutil.rmtree(dest)
-shutil.move(str(exported), dest)
+if dest.resolve() != exported.resolve():
+    if dest.exists():
+        shutil.rmtree(dest)
+    shutil.move(str(exported), dest)
 print(f"exported: {dest}")
