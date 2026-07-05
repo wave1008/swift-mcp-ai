@@ -3,6 +3,7 @@
 iOS Simulator の画面を高速に取得・解析する MCP サーバー(Swift / macOS)。
 
 - **capture_screenshot** — ScreenCaptureKit によるスクリーンショット。同一 Simulator への連続呼び出しは常駐 `SCStream` の最新フレームを返すため、ほぼゼロレイテンシ
+- **`source` オプション(全キャプチャ系ツール共通)** — `window`(既定): 上記の高速ウィンドウキャプチャ。`framebuffer`: `simctl io screenshot` でデバイス画面バッファを直接取得。ホストアプリの UI やベゼルが写り込まず、ネイティブ解像度(例: 1179×2556)で、ウィンドウの表示状態に依存しない(最小化・ヘッドレスでも可)。ただし毎回 約0.5秒
 - **detect_objects** — Core ML 化した YOLO をプロセス内に常駐させて物体検出(ANE/GPU)
 - **extract_text** — Vision OCR でテキストと位置(ピクセル座標・左上原点)を抽出
 - **analyze_screen** — 1回のキャプチャに対して YOLO と OCR を並列実行
@@ -46,7 +47,7 @@ claude mcp add simulator-mcp -- /path/to/swift-mcp-ai/.build/release/SimulatorMC
 - Simulator のウィンドウが画面上に存在すること(他ウィンドウの背後は可、**最小化は不可**)
 - Xcode(`xcrun simctl`)。Simulator.app(〜Xcode 26)と DeviceHub.app(Xcode 27 beta〜)の
   両方に対応。DeviceHub はウィンドウ全体(サイドバー等を含む)がキャプチャ対象になるため、
-  デバイス画面だけを対象にしたい場合はサイドバーを閉じておくとよい
+  デバイス画面だけが必要な場合は `source: "framebuffer"` を使う(ウィンドウ・画面収録権限とも不要)
 
 ## YOLO モデルの用意
 

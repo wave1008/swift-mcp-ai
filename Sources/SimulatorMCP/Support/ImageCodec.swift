@@ -65,6 +65,15 @@ enum ImageCodec {
         return image
     }
 
+    /// メモリ上のデータからデコードする。CGImage のデコードは遅延実行されるため、
+    /// 読み込み後すぐ削除されるファイルは URL ではなくこちらを使うこと
+    static func decode(_ data: Data) throws -> CGImage {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+            let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        else { throw CodecError.loadFailed("<in-memory data>") }
+        return image
+    }
+
     static func downscale(_ image: CGImage, scale: Double) -> CGImage {
         guard scale < 1.0, scale > 0 else { return image }
         let width = max(1, Int(Double(image.width) * scale))

@@ -2,9 +2,19 @@ import CoreMedia
 import Foundation
 @preconcurrency import ScreenCaptureKit
 
+/// キャプチャ経路。
+/// - window: Simulator ウィンドウを ScreenCaptureKit で取得(常駐ストリームで高速)。
+///   ホストアプリの UI(DeviceHub のサイドバー等)やベゼルも写り込む
+/// - framebuffer: `simctl io screenshot` でデバイス画面バッファを直接取得。
+///   デバイス画面のみ・ネイティブ解像度。ウィンドウ不要(最小化・背後でも可)だが毎回数百 ms
+enum CaptureSource: String, Sendable {
+    case window
+    case framebuffer
+}
+
 struct CaptureResult: Sendable {
     let image: ImageInput
-    let source: String  // "stream" | "screenshot"
+    let source: String  // "stream" | "screenshot" | "framebuffer"
 }
 
 /// 1つの Simulator ウィンドウに SCStream を常駐させ、最新フレームを保持する。
@@ -114,7 +124,11 @@ actor CaptureEngine {
     private let idleTimeout: Duration = .seconds(30)
     private var reaperTask: Task<Void, Never>?
 
-    func capture(device: SimDevice) async throws -> CaptureResult {
+    func capture(device: SimDevice, source: CaptureSource = .window) async throws -> CaptureResult {
+        if source == .framebuffer {
+            let image = try await Self.framebufferScreenshot(udid: device.udid)
+            return CaptureResult(image: .cgImage(image), source: "framebuffer")
+        }
         let udid = device.udid
         // 常駐ストリームに新しいフレームがあれば即返す
         if let capturer = capturers[udid], capturer.isRunning,
@@ -130,6 +144,17 @@ actor CaptureEngine {
         // 次回以降を高速化するため、裏でストリームを起動しておく
         ensureStream(udid: udid, window: window)
         return CaptureResult(image: .cgImage(image), source: "screenshot")
+    }
+
+    /// `simctl io screenshot` はファイル出力しか持たないため、一時ファイルを経由して読み込む
+    private static func framebufferScreenshot(udid: String) async throws -> CGImage {
+        let url = ImageCodec.outputDirectory
+            .appendingPathComponent("fb-\(udid.prefix(8))-\(UUID().uuidString).png")
+        defer { try? FileManager.default.removeItem(at: url) }
+        _ = try await ShellRunner.run(
+            "/usr/bin/xcrun", ["simctl", "io", udid, "screenshot", url.path])
+        // defer でファイルを消すため、URL 経由の遅延デコードではなくメモリに読み込んでから復号する
+        return try ImageCodec.decode(try Data(contentsOf: url))
     }
 
     private static func screenshot(window: SCWindow) async throws -> CGImage {

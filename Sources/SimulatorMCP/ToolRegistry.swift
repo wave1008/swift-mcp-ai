@@ -101,6 +101,13 @@ extension [String: Value] {
     fileprivate func stringArray(_ key: String) -> [String]? {
         self[key]?.arrayValue?.compactMap(\.stringValue)
     }
+    fileprivate func captureSource(_ key: String) throws -> CaptureSource {
+        guard let raw = string(key) else { return .window }
+        guard let source = CaptureSource(rawValue: raw) else {
+            throw MCPError.invalidParams("invalid source '\(raw)' (expected 'window' or 'framebuffer')")
+        }
+        return source
+    }
     fileprivate func pixelRect(_ key: String) -> PixelRect? {
         guard let obj = self[key]?.objectValue,
             let x = obj.number("x"), let y = obj.number("y"),
@@ -118,6 +125,11 @@ enum ToolRegistry {
         "description": "Simulator の UDID またはデバイス名(例: 'iPhone 16')",
     ]
 
+    private static let sourceProperty: Value = [
+        "type": "string", "enum": ["window", "framebuffer"],
+        "description": "キャプチャ経路(既定 window)。window: ScreenCaptureKit によるウィンドウ取得。連続呼び出しはほぼ 0ms だがホストアプリの UI やベゼルも写る。framebuffer: simctl でデバイス画面のみをネイティブ解像度で取得。ウィンドウ不要(最小化・背後でも可)だが毎回数百 ms",
+    ]
+
     static let tools: [Tool] = [
         Tool(
             name: "list_simulators",
@@ -132,6 +144,7 @@ enum ToolRegistry {
                 "type": "object",
                 "properties": [
                     "simulator": simulatorProperty,
+                    "source": sourceProperty,
                     "scale": [
                         "type": "number",
                         "description": "ダウンスケール比 0.1〜1.0(既定 1.0)",
@@ -156,6 +169,7 @@ enum ToolRegistry {
                 "type": "object",
                 "properties": [
                     "simulator": simulatorProperty,
+                    "source": sourceProperty,
                     "image_path": ["type": "string", "description": "解析する画像ファイルのパス(simulator と排他)"],
                     "confidence": ["type": "number", "description": "信頼度しきい値(既定 0.25)"],
                 ],
@@ -169,6 +183,7 @@ enum ToolRegistry {
                 "type": "object",
                 "properties": [
                     "simulator": simulatorProperty,
+                    "source": sourceProperty,
                     "image_path": ["type": "string", "description": "解析する画像ファイルのパス(simulator と排他)"],
                     "fast": [
                         "type": "boolean",
@@ -198,6 +213,7 @@ enum ToolRegistry {
                 "type": "object",
                 "properties": [
                     "simulator": simulatorProperty,
+                    "source": sourceProperty,
                     "confidence": ["type": "number", "description": "YOLO 信頼度しきい値(既定 0.25)"],
                     "fast": ["type": "boolean", "description": "OCR 高速モード(既定 false)"],
                     "save_screenshot": ["type": "boolean", "description": "キャプチャ画像も保存してパスを返す(既定 false)"],
@@ -258,11 +274,12 @@ enum ToolRegistry {
         let scale = args.number("scale") ?? 1.0
         let format = args.string("format") ?? "png"
         let inline = args.bool("inline") ?? false
+        let source = try args.captureSource("source")
 
         let clock = ContinuousClock()
         let device = try await context.locator.resolve(query)
         let t0 = clock.now
-        let captured = try await context.capture.capture(device: device)
+        let captured = try await context.capture.capture(device: device, source: source)
         let captureMs = ms(clock.now - t0)
 
         let t1 = clock.now
@@ -295,10 +312,11 @@ enum ToolRegistry {
         args: [String: Value], context: AppContext
     ) async throws -> (input: ImageInput, device: SimDevice?, path: String?, captureMs: Double?) {
         if let query = args.string("simulator") {
+            let source = try args.captureSource("source")
             let device = try await context.locator.resolve(query)
             let clock = ContinuousClock()
             let t0 = clock.now
-            let captured = try await context.capture.capture(device: device)
+            let captured = try await context.capture.capture(device: device, source: source)
             return (captured.image, device, nil, ms(clock.now - t0))
         }
         if let path = args.string("image_path") {
@@ -370,11 +388,12 @@ enum ToolRegistry {
         var options = OcrOptions()
         options.fast = args.bool("fast") ?? false
         let saveScreenshot = args.bool("save_screenshot") ?? false
+        let source = try args.captureSource("source")
 
         let clock = ContinuousClock()
         let device = try await context.locator.resolve(query)
         let t0 = clock.now
-        let captured = try await context.capture.capture(device: device)
+        let captured = try await context.capture.capture(device: device, source: source)
         let captureMs = ms(clock.now - t0)
         let input = captured.image
 
