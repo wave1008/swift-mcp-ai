@@ -1,0 +1,7 @@
+.build/
+.swiftpm/
+.DS_Store
+*.pt
+Models/*.mlpackage
+Models/*.mlmodelc
+!Models/.gitkeep
