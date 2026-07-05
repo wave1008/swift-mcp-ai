@@ -70,6 +70,7 @@ private struct AnalyzeOutput: Codable {
     let texts: [RecognizedText]
     let uiElements: [UiElement]?
     let screenshotPath: String?
+    let annotatedPath: String?
 }
 
 // MARK: - Helpers
@@ -220,6 +221,10 @@ enum ToolRegistry {
                     "confidence": ["type": "number", "description": "YOLO 信頼度しきい値(既定 0.25)"],
                     "fast": ["type": "boolean", "description": "OCR 高速モード(既定 false)"],
                     "save_screenshot": ["type": "boolean", "description": "キャプチャ画像も保存してパスを返す(既定 false)"],
+                    "annotate": [
+                        "type": "boolean",
+                        "description": "ui_elements の bbox を赤枠+ラベルで描画した画像を保存し annotated_path で返す(既定 false)",
+                    ],
                 ],
                 "required": ["simulator"],
             ]
@@ -391,6 +396,7 @@ enum ToolRegistry {
         var options = OcrOptions()
         options.fast = args.bool("fast") ?? false
         let saveScreenshot = args.bool("save_screenshot") ?? false
+        let annotate = args.bool("annotate") ?? false
         let source = try args.captureSource("source")
 
         let clock = ContinuousClock()
@@ -427,6 +433,17 @@ enum ToolRegistry {
         }
 
         let (width, height) = input.pixelSize
+        let uiElements = detections.map {
+            UiMap.build(detections: $0, texts: texts, imageWidth: width)
+        }
+
+        var annotatedPath: String?
+        if annotate, let uiElements {
+            let drawn = try UiMapRenderer.draw(elements: uiElements, on: try input.makeCGImage())
+            let data = try ImageCodec.encode(drawn, format: "png")
+            annotatedPath = try ImageCodec.writeToTemp(
+                data, prefix: "\(device.udid.prefix(8))-annotated", format: "png").path
+        }
         let output = AnalyzeOutput(
             simulator: DeviceRef(name: device.name, udid: device.udid),
             imageWidth: width,
@@ -437,10 +454,9 @@ enum ToolRegistry {
             detections: detections,
             yoloError: yoloError,
             texts: texts,
-            uiElements: detections.map {
-                UiMap.build(detections: $0, texts: texts, imageWidth: width)
-            },
-            screenshotPath: screenshotPath
+            uiElements: uiElements,
+            screenshotPath: screenshotPath,
+            annotatedPath: annotatedPath
         )
         return CallTool.Result(content: [.text(text: try jsonText(output))])
     }
