@@ -44,7 +44,9 @@ claude mcp add simulator-mcp -- /path/to/swift-mcp-ai/.build/release/SimulatorMC
   MCP クライアントの親プロセス(ターミナル、Claude Desktop 等)を許可する。
   `list_simulators` の `screen_recording_permission` で確認できる
 - Simulator のウィンドウが画面上に存在すること(他ウィンドウの背後は可、**最小化は不可**)
-- Xcode(`xcrun simctl`)
+- Xcode(`xcrun simctl`)。Simulator.app(〜Xcode 26)と DeviceHub.app(Xcode 27 beta〜)の
+  両方に対応。DeviceHub はウィンドウ全体(サイドバー等を含む)がキャプチャ対象になるため、
+  デバイス画面だけを対象にしたい場合はサイドバーを閉じておくとよい
 
 ## YOLO モデルの用意
 

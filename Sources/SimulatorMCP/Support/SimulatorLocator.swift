@@ -25,7 +25,7 @@ enum LocatorError: Error, CustomStringConvertible {
             return "simulator '\(device.name)' (\(device.udid)) is not booted (state: \(device.state))"
         case .windowNotFound(let device):
             return "no on-screen window for simulator '\(device.name)'. "
-                + "Simulator.app のウィンドウが表示されている必要があります(最小化は不可)"
+                + "Simulator.app / DeviceHub.app のウィンドウが表示されている必要があります(最小化は不可)"
         case .screenCapturePermissionDenied:
             return "screen recording permission denied. "
                 + "システム設定 > プライバシーとセキュリティ > 画面収録 でこのプロセス(ターミナル/MCPクライアント)を許可してください"
@@ -104,6 +104,13 @@ actor SimulatorLocator {
 
     // MARK: - ScreenCaptureKit window lookup
 
+    /// Simulator ウィンドウを持ちうるホストアプリ。
+    /// Xcode 26 までは Simulator.app、Xcode 27 beta からは DeviceHub.app。
+    static let hostBundleIDs: Set<String> = [
+        "com.apple.iphonesimulator",
+        "com.apple.dt.Devices",
+    ]
+
     /// デバイス名に対応する Simulator ウィンドウを探す。
     static func findWindow(for device: SimDevice) async throws -> SCWindow {
         guard CGPreflightScreenCaptureAccess() else {
@@ -113,7 +120,7 @@ actor SimulatorLocator {
         let content = try await SCShareableContent.excludingDesktopWindows(
             false, onScreenWindowsOnly: true)
         let simWindows = content.windows.filter {
-            $0.owningApplication?.bundleIdentifier == "com.apple.iphonesimulator"
+            hostBundleIDs.contains($0.owningApplication?.bundleIdentifier ?? "")
                 && $0.frame.height > 100
         }
         // タイトルは通常 "<デバイス名>" または "<デバイス名> — iOS xx.x" 形式。
@@ -143,7 +150,7 @@ actor SimulatorLocator {
         {
             visibleTitles = Set(
                 content.windows
-                    .filter { $0.owningApplication?.bundleIdentifier == "com.apple.iphonesimulator" }
+                    .filter { Self.hostBundleIDs.contains($0.owningApplication?.bundleIdentifier ?? "") }
                     .compactMap(\.title))
         }
         return booted.map { device in
