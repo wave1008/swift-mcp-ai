@@ -439,7 +439,8 @@ enum ToolRegistry {
 
         var annotatedPath: String?
         if annotate, let uiElements {
-            let drawn = try UiMapRenderer.draw(elements: uiElements, on: try input.makeCGImage())
+            let drawn = try UiMapRenderer.draw(
+                elements: uiElements, texts: texts, on: try input.makeCGImage())
             let data = try ImageCodec.encode(drawn, format: "png")
             annotatedPath = try ImageCodec.writeToTemp(
                 data, prefix: "\(device.udid.prefix(8))-annotated", format: "png").path

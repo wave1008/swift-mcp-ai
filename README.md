@@ -10,7 +10,8 @@ iOS Simulator の画面を高速に取得・解析する MCP サーバー(Swift 
 - **analyze_screen** — 1回のキャプチャに対して YOLO と OCR を並列実行。結果の `ui_elements` は
   検出要素と OCR テキストを位置照合した**ラベル付き UI マップ**(読み順ソート)。
   リスト行は「アイコン+右隣のテキスト」、カード型は「領域内の先頭テキスト」をラベルとして関連付ける。
-  `annotate: true` で全要素の bbox を赤枠+ラベルタグで描画した画像を保存し `annotated_path` で返す
+  `annotate: true` で検出要素の bbox を赤枠+ラベルタグ、OCR テキストの bbox を緑枠で
+  描画した画像を保存し `annotated_path` で返す
 - **list_simulators** — 起動中 Simulator の一覧と権限・ストリーム状態
 
 すべての処理は単一プロセス内で完結し、キャプチャ画像は `CVPixelBuffer` のまま
