@@ -72,15 +72,14 @@ enum UiMapRenderer {
         let line = CTLineCreateWithAttributedString(attributed)
         let bounds = CTLineGetBoundsWithOptions(line, [])
 
-        let padding = fontSize * 0.3
-        let tagHeight = bounds.height + padding * 2
+        // ラベル下端が枠の上辺に接する位置(上端をはみ出す場合は枠内に落とす)
         var origin = CGPoint(x: rect.minX, y: rect.maxY)
-        if origin.y + tagHeight > Double(imageHeight) {
-            origin.y = rect.maxY - tagHeight
+        if origin.y + bounds.height > Double(imageHeight) {
+            origin.y = rect.maxY - bounds.height
         }
         context.textPosition = CGPoint(
-            x: origin.x + padding,
-            y: origin.y + padding - bounds.origin.y)
+            x: origin.x,
+            y: origin.y - bounds.origin.y)
         CTLineDraw(line, context)
     }
 }
