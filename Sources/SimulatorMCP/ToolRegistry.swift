@@ -68,6 +68,7 @@ private struct AnalyzeOutput: Codable {
     let detections: [Detection]?
     let yoloError: String?
     let texts: [RecognizedText]
+    let uiElements: [UiElement]?
     let screenshotPath: String?
 }
 
@@ -209,7 +210,8 @@ enum ToolRegistry {
         Tool(
             name: "analyze_screen",
             description: "1回のキャプチャで YOLO 物体検出と Vision OCR を並列実行して統合結果を返す。"
-                + "両方必要な場合は個別呼び出しより高速",
+                + "ui_elements には検出要素とテキストを位置照合したラベル付き UI マップ"
+                + "(読み順ソート)を含む。両方必要な場合は個別呼び出しより高速",
             inputSchema: [
                 "type": "object",
                 "properties": [
@@ -435,6 +437,9 @@ enum ToolRegistry {
             detections: detections,
             yoloError: yoloError,
             texts: texts,
+            uiElements: detections.map {
+                UiMap.build(detections: $0, texts: texts, imageWidth: width)
+            },
             screenshotPath: screenshotPath
         )
         return CallTool.Result(content: [.text(text: try jsonText(output))])
