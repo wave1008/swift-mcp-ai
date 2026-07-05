@@ -24,7 +24,9 @@ enum UiMap {
         for icon in icons {
             var label: String?
             if let index = containedTextIndex(of: icon.bbox, in: texts, consumed: consumed)
-                ?? rowTextIndex(of: icon.bbox, in: texts, consumed: consumed, imageWidth: imageWidth)
+                ?? rowTextIndex(
+                    of: icon.bbox, in: texts, consumed: consumed,
+                    icons: icons, imageWidth: imageWidth)
             {
                 label = texts[index].text
                 consumed[index] = true
@@ -50,9 +52,12 @@ enum UiMap {
             .min { readingOrder(texts[$0].bbox, texts[$1].bbox) }
     }
 
-    /// 同じ行の右側にあるテキストのうち水平距離が最小のもの
+    /// 同じ行の右側にあるテキストのうち水平距離が最小のもの。
+    /// icon とテキストの間に別の icon が挟まる場合は、そのテキストを
+    /// より近い icon に譲るため候補から除外する。
     private static func rowTextIndex(
-        of icon: PixelRect, in texts: [RecognizedText], consumed: [Bool], imageWidth: Int
+        of icon: PixelRect, in texts: [RecognizedText], consumed: [Bool],
+        icons: [Detection], imageWidth: Int
     ) -> Int? {
         let maxGap = Double(imageWidth) * 0.4
         return texts.indices
@@ -62,10 +67,24 @@ enum UiMap {
                 let sameRow = abs(centerY(text) - centerY(icon)) <= max(icon.height, text.height) / 2
                 let gap = text.x - (icon.x + icon.width)
                 return sameRow && gap > -icon.width * 0.2 && gap <= maxGap
+                    && !hasCloserIcon(to: text, than: icon, in: icons)
             }
             .min { lhs, rhs in
                 texts[lhs].bbox.x - icon.x < texts[rhs].bbox.x - icon.x
             }
+    }
+
+    /// テキストの左側・同じ行に、icon より右(=テキストに近い)別の icon があるか
+    private static func hasCloserIcon(
+        to text: PixelRect, than icon: PixelRect, in icons: [Detection]
+    ) -> Bool {
+        icons.contains { other in
+            let box = other.bbox
+            guard box.x != icon.x || box.y != icon.y else { return false }
+            let sameRow = abs(centerY(box) - centerY(text)) <= max(box.height, text.height) / 2
+            let between = box.x > icon.x && box.x + box.width <= text.x
+            return sameRow && between
+        }
     }
 
     // MARK: - Geometry helpers
