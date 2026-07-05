@@ -72,8 +72,8 @@ enum UiMapRenderer {
         let line = CTLineCreateWithAttributedString(attributed)
         let bounds = CTLineGetBoundsWithOptions(line, [])
 
-        // ラベル下端が枠の上辺に接する位置(上端をはみ出す場合は枠内に落とす)
-        var origin = CGPoint(x: rect.minX, y: rect.maxY)
+        // ラベル下端が枠の上辺にわずかに重なる位置(上端をはみ出す場合は枠内に落とす)
+        var origin = CGPoint(x: rect.minX, y: rect.maxY - fontSize * 0.4)
         if origin.y + bounds.height > Double(imageHeight) {
             origin.y = rect.maxY - bounds.height
         }
