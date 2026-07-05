@@ -2,8 +2,7 @@
 
 iOS Simulator の画面を高速に取得・解析する MCP サーバー(Swift / macOS)。
 
-- **capture_screenshot** — ScreenCaptureKit によるスクリーンショット。同一 Simulator への連続呼び出しは常駐 `SCStream` の最新フレームを返すため、ほぼゼロレイテンシ
-- **`source` オプション(全キャプチャ系ツール共通)** — `window`(既定): 上記の高速ウィンドウキャプチャ。`framebuffer`: `simctl io screenshot` でデバイス画面バッファを直接取得。ホストアプリの UI やベゼルが写り込まず、ネイティブ解像度(例: 1179×2556)で、ウィンドウの表示状態に依存しない(最小化・ヘッドレスでも可)。ただし毎回 約0.5秒
+- **capture_screenshot** — `simctl io screenshot` でデバイス画面バッファを直接取得。ホストアプリの UI やベゼルが写り込まず、ネイティブ解像度(例: 1179×2556)で、ウィンドウの表示状態に依存しない(最小化・ヘッドレス・背後でも可)。画面収録権限は不要
 - **detect_objects** — Core ML 化した YOLO をプロセス内に常駐させて物体・UI 要素検出(ANE/GPU)。
   既定モデル(OmniParser v2 icon_detect)はボタン・アイコン等のインタラクティブ UI 要素を検出する
 - **extract_text** — Vision OCR でテキストと位置(ピクセル座標・左上原点)を抽出
@@ -12,11 +11,10 @@ iOS Simulator の画面を高速に取得・解析する MCP サーバー(Swift 
   リスト行は「アイコン+右隣のテキスト」、カード型は「領域内の先頭テキスト」をラベルとして関連付ける。
   `annotate: true` で検出要素の bbox を赤枠+ラベルタグ、OCR テキストの bbox を緑枠で
   描画した画像を保存し `annotated_path` で返す
-- **list_simulators** — 起動中 Simulator の一覧と権限・ストリーム状態
+- **list_simulators** — 起動中 Simulator の一覧(名前・UDID・ランタイム)
 
-すべての処理は単一プロセス内で完結し、キャプチャ画像は `CVPixelBuffer` のまま
-エンコードなしで解析エンジンへ渡される。独立したリクエストは並列に処理される
-(1リクエストにつき対象 Simulator は1つ)。
+すべての処理は単一プロセス内で完結し、キャプチャ画像はエンコードなしで解析エンジンへ
+渡される。独立したリクエストは並列に処理される(1リクエストにつき対象 Simulator は1つ)。
 
 ## ビルド
 
@@ -46,13 +44,10 @@ claude mcp add simulator-mcp -- /path/to/swift-mcp-ai/.build/release/SimulatorMC
 
 ## 必要な権限・前提
 
-- **画面収録権限(TCC)**: システム設定 > プライバシーとセキュリティ > 画面収録 で、
-  MCP クライアントの親プロセス(ターミナル、Claude Desktop 等)を許可する。
-  `list_simulators` の `screen_recording_permission` で確認できる
-- Simulator のウィンドウが画面上に存在すること(他ウィンドウの背後は可、**最小化は不可**)
-- Xcode(`xcrun simctl`)。Simulator.app(〜Xcode 26)と DeviceHub.app(Xcode 27 beta〜)の
-  両方に対応。DeviceHub はウィンドウ全体(サイドバー等を含む)がキャプチャ対象になるため、
-  デバイス画面だけが必要な場合は `source: "framebuffer"` を使う(ウィンドウ・画面収録権限とも不要)
+- Xcode(`xcrun simctl`)がインストールされていること。キャプチャは `simctl io screenshot`
+  でデバイス画面バッファから直接取得するため、**画面収録権限もウィンドウ表示も不要**
+  (Simulator が最小化・ヘッドレス・他ウィンドウの背後でも取得できる)
+- 対象 Simulator が起動(Booted)していること
 
 ## 検出モデルの用意
 
@@ -84,10 +79,8 @@ uv run scripts/export_yolo.py yolo11n   # Models/yolo11n.mlpackage を生成
 
 | 施策 | 効果 |
 |---|---|
-| 常駐 SCStream の最新フレーム返却 | 2回目以降のキャプチャ ≈0ms(アイドル30秒で自動解放) |
-| ワンショットは SCScreenshotManager | 初回でも数十ms |
 | YOLO / OCR モデルの起動時ウォームアップ | 初回推論の遅延(OCR 日本語は約30秒)をバックグラウンドで吸収 |
-| CVPixelBuffer 直渡し | キャプチャ→解析間のエンコード往復なし |
+| キャプチャ画像の直渡し | キャプチャ→解析間のエンコード往復なし |
 | 画像はファイルパス返却(既定) | stdio への base64 転送を回避(`inline: true` で同梱も可) |
 | analyze_screen | 1キャプチャに対し YOLO と OCR を並列実行 |
 

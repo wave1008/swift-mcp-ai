@@ -19,7 +19,7 @@ let server = Server(
     name: "simulator-mcp",
     version: "0.1.0",
     instructions: """
-        iOS Simulator の画面を ScreenCaptureKit で高速キャプチャし、\
+        iOS Simulator の画面を simctl でデバイス画面バッファから取得し、\
         YOLO(Core ML)による物体検出と Vision OCR によるテキスト抽出を提供します。\
         simulator 引数には UDID かデバイス名を1つだけ指定してください。\
         座標はすべてキャプチャ画像のピクセル座標(左上原点)です。

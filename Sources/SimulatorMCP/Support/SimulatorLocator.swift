@@ -1,5 +1,4 @@
 import Foundation
-@preconcurrency import ScreenCaptureKit
 
 struct SimDevice: Codable, Sendable {
     let name: String
@@ -11,8 +10,6 @@ struct SimDevice: Codable, Sendable {
 enum LocatorError: Error, CustomStringConvertible {
     case notFound(query: String, candidates: [String])
     case notBooted(SimDevice)
-    case windowNotFound(SimDevice)
-    case screenCapturePermissionDenied
 
     var description: String {
         switch self {
@@ -23,12 +20,6 @@ enum LocatorError: Error, CustomStringConvertible {
             return "simulator not found for '\(query)' (\(hint))"
         case .notBooted(let device):
             return "simulator '\(device.name)' (\(device.udid)) is not booted (state: \(device.state))"
-        case .windowNotFound(let device):
-            return "no on-screen window for simulator '\(device.name)'. "
-                + "Simulator.app / DeviceHub.app のウィンドウが表示されている必要があります(最小化は不可)"
-        case .screenCapturePermissionDenied:
-            return "screen recording permission denied. "
-                + "システム設定 > プライバシーとセキュリティ > 画面収録 でこのプロセス(ターミナル/MCPクライアント)を許可してください"
         }
     }
 }
@@ -102,62 +93,9 @@ actor SimulatorLocator {
         return byName.first(where: { $0.state == "Booted" }) ?? byName.first
     }
 
-    // MARK: - ScreenCaptureKit window lookup
-
-    /// Simulator ウィンドウを持ちうるホストアプリ。
-    /// Xcode 26 までは Simulator.app、Xcode 27 beta からは DeviceHub.app。
-    static let hostBundleIDs: Set<String> = [
-        "com.apple.iphonesimulator",
-        "com.apple.dt.Devices",
-    ]
-
-    /// デバイス名に対応する Simulator ウィンドウを探す。
-    static func findWindow(for device: SimDevice) async throws -> SCWindow {
-        guard CGPreflightScreenCaptureAccess() else {
-            CGRequestScreenCaptureAccess()
-            throw LocatorError.screenCapturePermissionDenied
-        }
-        let content = try await SCShareableContent.excludingDesktopWindows(
-            false, onScreenWindowsOnly: true)
-        let simWindows = content.windows.filter {
-            hostBundleIDs.contains($0.owningApplication?.bundleIdentifier ?? "")
-                && $0.frame.height > 100
-        }
-        // タイトルは通常 "<デバイス名>" または "<デバイス名> — iOS xx.x" 形式。
-        // 完全一致 > 区切り付き前方一致 の順で採用し、名前の部分一致誤爆を避ける。
-        let name = device.name
-        let candidates = simWindows.filter { window in
-            guard let title = window.title else { return false }
-            if title == name { return true }
-            for separator in [" — ", " – ", " - "] where title.hasPrefix(name + separator) {
-                return true
-            }
-            return false
-        }
-        guard let window = candidates.max(by: { $0.frame.height < $1.frame.height }) else {
-            throw LocatorError.windowNotFound(device)
-        }
-        return window
-    }
-
-    func listWithWindowStatus() async throws -> [(device: SimDevice, hasWindow: Bool)] {
+    /// 起動中(Booted)のデバイス一覧を返す。
+    func listBooted() async throws -> [SimDevice] {
         let devs = try await refreshDevices()
-        let booted = devs.filter { $0.state == "Booted" }
-        var visibleTitles: Set<String> = []
-        if CGPreflightScreenCaptureAccess(),
-            let content = try? await SCShareableContent.excludingDesktopWindows(
-                false, onScreenWindowsOnly: true)
-        {
-            visibleTitles = Set(
-                content.windows
-                    .filter { Self.hostBundleIDs.contains($0.owningApplication?.bundleIdentifier ?? "") }
-                    .compactMap(\.title))
-        }
-        return booted.map { device in
-            let hasWindow = visibleTitles.contains { title in
-                title == device.name || title.hasPrefix(device.name + " ")
-            }
-            return (device, hasWindow)
-        }
+        return devs.filter { $0.state == "Booted" }
     }
 }

@@ -14,12 +14,9 @@ private struct SimulatorSummary: Codable {
     let name: String
     let udid: String
     let runtime: String
-    let windowVisible: Bool
-    let streamActive: Bool
 }
 
 private struct ListOutput: Codable {
-    let screenRecordingPermission: Bool
     let simulators: [SimulatorSummary]
 }
 
@@ -103,13 +100,6 @@ extension [String: Value] {
     fileprivate func stringArray(_ key: String) -> [String]? {
         self[key]?.arrayValue?.compactMap(\.stringValue)
     }
-    fileprivate func captureSource(_ key: String) throws -> CaptureSource {
-        guard let raw = string(key) else { return .window }
-        guard let source = CaptureSource(rawValue: raw) else {
-            throw MCPError.invalidParams("invalid source '\(raw)' (expected 'window' or 'framebuffer')")
-        }
-        return source
-    }
     fileprivate func pixelRect(_ key: String) -> PixelRect? {
         guard let obj = self[key]?.objectValue,
             let x = obj.number("x"), let y = obj.number("y"),
@@ -127,26 +117,20 @@ enum ToolRegistry {
         "description": "Simulator の UDID またはデバイス名(例: 'iPhone 16')",
     ]
 
-    private static let sourceProperty: Value = [
-        "type": "string", "enum": ["window", "framebuffer"],
-        "description": "キャプチャ経路(既定 window)。window: ScreenCaptureKit によるウィンドウ取得。連続呼び出しはほぼ 0ms だがホストアプリの UI やベゼルも写る。framebuffer: simctl でデバイス画面のみをネイティブ解像度で取得。ウィンドウ不要(最小化・背後でも可)だが毎回数百 ms",
-    ]
-
     static let tools: [Tool] = [
         Tool(
             name: "list_simulators",
-            description: "起動中の iOS Simulator 一覧(UDID・ウィンドウ表示状態・常駐ストリーム状態)を返す",
+            description: "起動中の iOS Simulator 一覧(名前・UDID・ランタイム)を返す",
             inputSchema: ["type": "object", "properties": [:]]
         ),
         Tool(
             name: "capture_screenshot",
-            description: "指定した Simulator のスクリーンショットを ScreenCaptureKit で高速取得しファイルに保存する。"
-                + "同じ Simulator への連続呼び出しは常駐ストリームによりほぼゼロレイテンシ",
+            description: "指定した Simulator のスクリーンショットを simctl でデバイス画面バッファから取得しファイルに保存する。"
+                + "デバイス画面のみ・ネイティブ解像度。ウィンドウ不要(最小化・背後でも可)",
             inputSchema: [
                 "type": "object",
                 "properties": [
                     "simulator": simulatorProperty,
-                    "source": sourceProperty,
                     "scale": [
                         "type": "number",
                         "description": "ダウンスケール比 0.1〜1.0(既定 1.0)",
@@ -172,7 +156,6 @@ enum ToolRegistry {
                 "type": "object",
                 "properties": [
                     "simulator": simulatorProperty,
-                    "source": sourceProperty,
                     "image_path": ["type": "string", "description": "解析する画像ファイルのパス(simulator と排他)"],
                     "confidence": ["type": "number", "description": "信頼度しきい値(既定 0.25)"],
                 ],
@@ -186,7 +169,6 @@ enum ToolRegistry {
                 "type": "object",
                 "properties": [
                     "simulator": simulatorProperty,
-                    "source": sourceProperty,
                     "image_path": ["type": "string", "description": "解析する画像ファイルのパス(simulator と排他)"],
                     "fast": [
                         "type": "boolean",
@@ -211,19 +193,18 @@ enum ToolRegistry {
         Tool(
             name: "analyze_screen",
             description: "1回のキャプチャで YOLO 物体検出と Vision OCR を並列実行して統合結果を返す。"
-                + "ui_elements には検出要素とテキストを位置照合したラベル付き UI マップ"
-                + "(読み順ソート)を含む。両方必要な場合は個別呼び出しより高速",
+                + "ui_elements には検出要素(icon)とテキスト(text)を読み順にまとめた UI マップ"
+                + "を含む。両方必要な場合は個別呼び出しより高速",
             inputSchema: [
                 "type": "object",
                 "properties": [
                     "simulator": simulatorProperty,
-                    "source": sourceProperty,
                     "confidence": ["type": "number", "description": "YOLO 信頼度しきい値(既定 0.25)"],
                     "fast": ["type": "boolean", "description": "OCR 高速モード(既定 false)"],
                     "save_screenshot": ["type": "boolean", "description": "キャプチャ画像も保存してパスを返す(既定 false)"],
                     "annotate": [
                         "type": "boolean",
-                        "description": "ui_elements の bbox を赤枠+ラベルで描画した画像を保存し annotated_path で返す(既定 false)",
+                        "description": "ui_elements の bbox(icon=赤枠 / text=緑枠)を描画した画像を保存し annotated_path で返す(既定 false)",
                     ],
                 ],
                 "required": ["simulator"],
@@ -257,17 +238,13 @@ enum ToolRegistry {
     // MARK: - Tool implementations
 
     private static func listSimulators(context: AppContext) async throws -> CallTool.Result {
-        let entries = try await context.locator.listWithWindowStatus()
-        let streams = await context.capture.streamStatus()
+        let devices = try await context.locator.listBooted()
         let output = ListOutput(
-            screenRecordingPermission: CGPreflightScreenCaptureAccess(),
-            simulators: entries.map { entry in
+            simulators: devices.map { device in
                 SimulatorSummary(
-                    name: entry.device.name,
-                    udid: entry.device.udid,
-                    runtime: entry.device.runtime,
-                    windowVisible: entry.hasWindow,
-                    streamActive: streams[entry.device.udid] ?? false
+                    name: device.name,
+                    udid: device.udid,
+                    runtime: device.runtime
                 )
             })
         return CallTool.Result(content: [.text(text: try jsonText(output))])
@@ -282,12 +259,11 @@ enum ToolRegistry {
         let scale = args.number("scale") ?? 1.0
         let format = args.string("format") ?? "png"
         let inline = args.bool("inline") ?? false
-        let source = try args.captureSource("source")
 
         let clock = ContinuousClock()
         let device = try await context.locator.resolve(query)
         let t0 = clock.now
-        let captured = try await context.capture.capture(device: device, source: source)
+        let captured = try await context.capture.capture(device: device)
         let captureMs = ms(clock.now - t0)
 
         let t1 = clock.now
@@ -320,11 +296,10 @@ enum ToolRegistry {
         args: [String: Value], context: AppContext
     ) async throws -> (input: ImageInput, device: SimDevice?, path: String?, captureMs: Double?) {
         if let query = args.string("simulator") {
-            let source = try args.captureSource("source")
             let device = try await context.locator.resolve(query)
             let clock = ContinuousClock()
             let t0 = clock.now
-            let captured = try await context.capture.capture(device: device, source: source)
+            let captured = try await context.capture.capture(device: device)
             return (captured.image, device, nil, ms(clock.now - t0))
         }
         if let path = args.string("image_path") {
@@ -397,12 +372,11 @@ enum ToolRegistry {
         options.fast = args.bool("fast") ?? false
         let saveScreenshot = args.bool("save_screenshot") ?? false
         let annotate = args.bool("annotate") ?? false
-        let source = try args.captureSource("source")
 
         let clock = ContinuousClock()
         let device = try await context.locator.resolve(query)
         let t0 = clock.now
-        let captured = try await context.capture.capture(device: device, source: source)
+        let captured = try await context.capture.capture(device: device)
         let captureMs = ms(clock.now - t0)
         let input = captured.image
 
