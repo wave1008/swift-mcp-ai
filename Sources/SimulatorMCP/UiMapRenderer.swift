@@ -47,7 +47,7 @@ enum UiMapRenderer {
             context.stroke(rect)
             if let label = element.label {
                 drawTag(label, above: rect, in: context,
-                        background: red, fontSize: fontSize, imageHeight: height)
+                        color: red, fontSize: fontSize, imageHeight: height)
             }
         }
         guard let result = context.makeImage() else {
@@ -56,15 +56,15 @@ enum UiMapRenderer {
         return result
     }
 
-    /// 枠の左上に赤地白文字のラベルタグを描く(上端をはみ出す場合は枠内に落とす)
+    /// 枠の左上に赤文字のラベルを描く(背景なし。上端をはみ出す場合は枠内に落とす)
     private static func drawTag(
         _ text: String, above rect: CGRect, in context: CGContext,
-        background: CGColor, fontSize: Double, imageHeight: Int
+        color: CGColor, fontSize: Double, imageHeight: Int
     ) {
         let font = CTFontCreateWithName("HiraginoSans-W6" as CFString, fontSize, nil)
         let attributes = [
             kCTFontAttributeName: font,
-            kCTForegroundColorAttributeName: CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1),
+            kCTForegroundColorAttributeName: color,
         ] as CFDictionary
         guard let attributed = CFAttributedStringCreate(nil, text as CFString, attributes) else {
             return
@@ -78,14 +78,9 @@ enum UiMapRenderer {
         if origin.y + tagHeight > Double(imageHeight) {
             origin.y = rect.maxY - tagHeight
         }
-        let tagRect = CGRect(
-            x: origin.x, y: origin.y,
-            width: bounds.width + padding * 2, height: tagHeight)
-        context.setFillColor(background)
-        context.fill(tagRect)
         context.textPosition = CGPoint(
-            x: tagRect.minX + padding,
-            y: tagRect.minY + padding - bounds.origin.y)
+            x: origin.x + padding,
+            y: origin.y + padding - bounds.origin.y)
         CTLineDraw(line, context)
     }
 }
