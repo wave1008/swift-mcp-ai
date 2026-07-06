@@ -13,16 +13,20 @@ let locator = SimulatorLocator()
 let captureEngine = CaptureEngine()
 let yoloEngine = YoloEngine(
     modelPath: ProcessInfo.processInfo.environment["YOLO_MODEL_PATH"])
-let context = AppContext(locator: locator, capture: captureEngine, yolo: yoloEngine)
+let interactionEngine = InteractionEngine(
+    axePath: ProcessInfo.processInfo.environment["AXE_PATH"])
+let context = AppContext(
+    locator: locator, capture: captureEngine, yolo: yoloEngine, interact: interactionEngine)
 
 let server = Server(
     name: "simulator-mcp",
-    version: "0.1.0",
+    version: "0.2.0",
     instructions: """
         iOS Simulator の画面を simctl でデバイス画面バッファから取得し、\
-        YOLO(Core ML)による物体検出と Vision OCR によるテキスト抽出を提供します。\
+        YOLO(Core ML)による物体検出と Vision OCR によるテキスト抽出、\
+        AXe による UI 操作(tap / swipe / type_text)を提供します。\
         simulator 引数には UDID かデバイス名を1つだけ指定してください。\
-        座標はすべてキャプチャ画像のピクセル座標(左上原点)です。
+        座標は知覚・操作ともキャプチャ画像のピクセル座標(左上原点)で統一されています。
         """,
     capabilities: .init(tools: .init(listChanged: false))
 )
